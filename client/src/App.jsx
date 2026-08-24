@@ -4,7 +4,8 @@ import API from './services/api';
 import { Search, Activity, AlertTriangle, UserCheck, LogOut } from 'lucide-react';
 
 export default function App() {
-  const { token, user, login, logout } = useContext(AuthContext);
+  const auth = useContext(AuthContext) || {};
+  const { token = null, user = null, login = () => {}, logout = () => {} } = auth;
 
   // Form states
   const [email, setEmail] = useState('');
@@ -34,21 +35,34 @@ export default function App() {
   const fetchRecentVisits = async () => {
     try {
       const res = await API.get('/visits/recent');
-      setRecentVisits(res.data);
+      if (res && res.data && Array.isArray(res.data)) {
+        setRecentVisits(res.data);
+      } else {
+        setRecentVisits([]);
+      }
     } catch (err) {
-      console.error(err);
+      console.warn('API connection offline or endpoint unreachable:', err);
+      setRecentVisits([]);
     }
   };
 
   useEffect(() => {
-    if (token) fetchRecentVisits();
+    if (token) {
+      fetchRecentVisits();
+    }
   }, [token]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoginError('');
-    const res = await login(email, password);
-    if (!res.success) setLoginError(res.message);
+    try {
+      const res = await login(email, password);
+      if (res && !res.success) {
+        setLoginError(res.message || 'Login failed. Check your credentials.');
+      }
+    } catch (err) {
+      setLoginError('Unable to connect to authentication server.');
+    }
   };
 
   const handleStudentLookup = async (e) => {
@@ -57,9 +71,13 @@ export default function App() {
     setStudent(null);
     try {
       const res = await API.get(`/students/${studentNum}`);
-      setStudent(res.data);
+      if (res && res.data) {
+        setStudent(res.data);
+      } else {
+        setLookupError('Student record not found.');
+      }
     } catch (err) {
-      setLookupError('Student not found. Please verify the ID.');
+      setLookupError('Student not found. Please verify the ID or server status.');
     }
   };
 
@@ -73,7 +91,7 @@ export default function App() {
         ...visitData
       });
 
-      if (res.data.alert_triggered) {
+      if (res && res.data && res.data.alert_triggered) {
         setAlertBanner(res.data.alert_message);
       } else {
         setAlertBanner(null);
@@ -94,7 +112,7 @@ export default function App() {
       setStudentNum('');
       fetchRecentVisits();
     } catch (err) {
-      alert('Error submitting visit log.');
+      alert('Error submitting visit log. Check network/server connection.');
     }
   };
 
@@ -146,7 +164,7 @@ export default function App() {
           <p className="text-xs text-blue-200">Campus Student Record & Vitals Management</p>
         </div>
         <div className="flex items-center gap-4">
-          <span className="text-sm bg-blue-800 px-3 py-1 rounded-full">{user?.full_name} ({user?.role})</span>
+          <span className="text-sm bg-blue-800 px-3 py-1 rounded-full">{user?.full_name || 'Staff User'} ({user?.role || 'Staff'})</span>
           <button onClick={logout} className="p-1 hover:bg-blue-800 rounded">
             <LogOut className="w-5 h-5" />
           </button>
@@ -316,10 +334,12 @@ export default function App() {
               <p className="text-xs text-gray-400">No recent visits recorded today.</p>
             ) : (
               recentVisits.map((v) => (
-                <div key={v.id} className="p-3 border-b last:border-0 hover:bg-gray-50 rounded">
+                <div key={v.id || Math.random()} className="p-3 border-b last:border-0 hover:bg-gray-50 rounded">
                   <div className="flex justify-between items-start">
                     <span className="font-semibold text-sm text-gray-800">{v.first_name} {v.last_name}</span>
-                    <span className="text-[10px] text-gray-400">{new Date(v.visit_timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                    <span className="text-[10px] text-gray-400">
+                      {v.visit_timestamp ? new Date(v.visit_timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}
+                    </span>
                   </div>
                   <p className="text-xs text-gray-600 mt-0.5">{v.chief_complaint}</p>
                   <div className="mt-2 flex justify-between items-center text-[11px]">
