@@ -2,7 +2,8 @@
   "name": "au-jrc-clinic-client",
   "private": true,
   "version": "1.0.0",
-  "homepage": "https://<your-github-username>.github.io/au-jrc-clinic-app",
+  "type": "module",
+  "homepage": "https://rain-coding-journey.github.io/au-jrc-clinic-app",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
