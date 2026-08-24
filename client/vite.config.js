@@ -5,4 +5,7 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   base: '/au-jrc-clinic-app/',
+  build: {
+    sourcemap: false, // Prevents eval-based sourcemaps in production build
+  }
 })
