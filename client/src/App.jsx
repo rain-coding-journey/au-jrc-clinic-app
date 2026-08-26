@@ -13,6 +13,7 @@ const Package = LucideIcons.Package || (({ className }) => <span className={clas
 const UserPlus = LucideIcons.UserPlus || (({ className }) => <span className={className}>👤➕</span>);
 const X = LucideIcons.X || (({ className }) => <span className={className}>✕</span>);
 const Pill = LucideIcons.Pill || (({ className }) => <span className={className}>💊</span>);
+const Trash2 = LucideIcons.Trash2 || (({ className }) => <span className={className}>🗑️</span>);
 
 export default function App() {
   const auth = useContext(AuthContext) || {};
@@ -83,7 +84,7 @@ export default function App() {
     disposition: 'Rested in Clinic Bed'
   });
 
-  // Persistent Recent Visits Queue state (with Status: "Ongoing" | "Done")
+  // Persistent Recent Visits Queue state
   const [recentVisits, setRecentVisits] = useState(() => {
     const saved = localStorage.getItem('au_recent_visits');
     return saved ? JSON.parse(saved) : [
@@ -96,8 +97,8 @@ export default function App() {
         chief_complaint: 'Fever and Dizziness',
         temperature_celsius: '38.2',
         medication_given: 'Paracetamol 500mg (1 pc)',
-        disposition: 'Rested in Clinic Bed',
-        status: 'Ongoing', // 'Ongoing' or 'Done'
+        disposition: 'Returned to Class',
+        status: 'Done',
         visit_timestamp: new Date().toISOString()
       }
     ];
@@ -181,7 +182,6 @@ export default function App() {
 
     const query = studentNum.trim().toLowerCase();
 
-    // First check persistent local storage
     const localMatch = registeredStudents.find(
       s => s.student_number.toLowerCase() === query || s.id.toString().toLowerCase() === query
     );
@@ -191,7 +191,6 @@ export default function App() {
       return;
     }
 
-    // Attempt backend search
     try {
       const res = await API.get(`/students/${studentNum}`);
       if (res && res.data) {
@@ -221,7 +220,6 @@ export default function App() {
       existing_conditions: newStudentData.existing_conditions ? newStudentData.existing_conditions.split(',').map(s => s.trim()) : []
     };
 
-    // Save to Persistent Local Storage State
     setRegisteredStudents(prev => [formattedStudent, ...prev.filter(s => s.student_number !== formattedStudent.student_number)]);
     setStudent(formattedStudent);
 
@@ -249,7 +247,6 @@ export default function App() {
 
     let medLabel = '';
 
-    // Deduct stock if medication selected
     if (visitData.selected_medication_id) {
       const selectedMed = medications.find(m => m.id === visitData.selected_medication_id || m.medication_id === visitData.selected_medication_id);
       if (selectedMed) {
@@ -261,7 +258,6 @@ export default function App() {
 
         medLabel = `${selectedMed.name} ${selectedMed.strength} (${reqQty} pc${reqQty > 1 ? 's' : ''})`;
 
-        // Deduct inventory stock locally
         setMedications(prevMeds =>
           prevMeds.map(med => {
             const medId = med.id || med.medication_id;
@@ -273,7 +269,6 @@ export default function App() {
       }
     }
 
-    // Determine initial status based on disposition
     const isDone = visitData.disposition === 'Returned to Class' || visitData.disposition === 'Sent Home / Fetched by Parent';
 
     const newVisitRecord = {
@@ -286,7 +281,7 @@ export default function App() {
       temperature_celsius: visitData.temperature_celsius || '36.5',
       medication_given: medLabel,
       disposition: visitData.disposition,
-      status: isDone ? 'Done' : 'Ongoing', // Ongoing if bed rest / referred
+      status: isDone ? 'Done' : 'Ongoing',
       visit_timestamp: new Date().toISOString()
     };
 
@@ -309,10 +304,8 @@ export default function App() {
       }
     }
 
-    // Save to Persistent Queue
     setRecentVisits((prev) => [newVisitRecord, ...prev]);
 
-    // Reset Form
     setVisitData({
       chief_complaint: '',
       temperature_celsius: '',
@@ -329,7 +322,7 @@ export default function App() {
     setStudentNum('');
   };
 
-  // Function to toggle visit status (Ongoing <-> Done)
+  // Toggle Visit Status Function
   const toggleVisitStatus = (visitId) => {
     setRecentVisits(prev =>
       prev.map(v => {
@@ -346,7 +339,19 @@ export default function App() {
     );
   };
 
-  // Quick Select Student from recent list or registered list
+  // 🗑️ Delete Single Visit Item Function
+  const handleDeleteVisit = async (visitId) => {
+    if (window.confirm('Are you sure you want to delete this visit record?')) {
+      setRecentVisits(prev => prev.filter(v => v.id !== visitId));
+      
+      try {
+        await API.delete(`/visits/${visitId}`);
+      } catch (err) {
+        console.warn('Backend API offline. Removed locally.');
+      }
+    }
+  };
+
   const selectStudentFromRecord = (studentNo) => {
     const match = registeredStudents.find(s => s.student_number === studentNo);
     if (match) {
@@ -355,7 +360,6 @@ export default function App() {
     }
   };
 
-  // Sign-in Screen View
   if (!localToken) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-blue-900 px-4">
@@ -407,11 +411,10 @@ export default function App() {
     );
   }
 
-  // Dashboard Main View
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans relative">
       
-      {/* Registration Modal Overlay */}
+      {/* Registration Modal */}
       {showRegModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-2xl max-w-lg w-full p-6 space-y-4 relative">
@@ -521,7 +524,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Top Navigation Bar */}
+      {/* Header */}
       <header className="bg-blue-900 text-white px-6 py-4 flex justify-between items-center shadow-md">
         <div>
           <h1 className="font-bold text-lg">AU JRC Clinic System</h1>
@@ -535,10 +538,10 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Dashboard Layout */}
+      {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* Left Section: Search, Intake and Prescription Form */}
+        {/* Left Column */}
         <section className="lg:col-span-2 space-y-6">
           
           {alertBanner && (
@@ -551,7 +554,7 @@ export default function App() {
             </div>
           )}
 
-          {/* Student Lookup & Registration Bar */}
+          {/* Student Search */}
           <div className="bg-white p-5 rounded-lg shadow-sm border border-gray-200">
             <div className="flex justify-between items-center mb-3">
               <h2 className="text-sm font-bold text-gray-800 flex items-center gap-2 uppercase tracking-wide">
@@ -579,7 +582,7 @@ export default function App() {
             </form>
             {lookupError && <p className="text-xs text-red-500 mt-2 font-medium">{lookupError}</p>}
 
-            {/* Quick Registered Students List Pills */}
+            {/* Registered Student Pills */}
             {registeredStudents.length > 0 && (
               <div className="mt-4 pt-3 border-t">
                 <p className="text-[11px] font-bold text-gray-500 uppercase mb-2">Saved / Registered Students (Click to Select):</p>
@@ -599,7 +602,7 @@ export default function App() {
             )}
           </div>
 
-          {/* Intake Entry Form */}
+          {/* Active Patient Intake Form */}
           {student && (
             <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 space-y-4">
               <div className="border-b pb-3 flex justify-between items-start">
@@ -612,7 +615,6 @@ export default function App() {
                 </span>
               </div>
 
-              {/* Medical Flags */}
               <div className="flex flex-wrap gap-2 text-xs">
                 {student.allergies?.length > 0 ? (
                   student.allergies.map((allergy, idx) => (
@@ -692,14 +694,13 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Prescription & Dispensing Input Block */}
                 <div className="border-t pt-3 bg-blue-50/70 p-3 rounded-lg">
                   <h4 className="text-xs font-bold text-blue-900 uppercase mb-2 flex items-center gap-1">
                     <Package className="w-3.5 h-3.5" /> Medication Prescribed & Dispensed
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div className="md:col-span-2">
-                      <label className="block text-[11px] font-semibold text-gray-600">Select Medicine for Sickness</label>
+                      <label className="block text-[11px] font-semibold text-gray-600">Select Medicine</label>
                       <select 
                         className="w-full mt-1 border p-2 rounded text-xs bg-white"
                         value={visitData.selected_medication_id}
@@ -729,10 +730,10 @@ export default function App() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-gray-600">Treatment / Instructions Provided</label>
+                    <label className="block text-xs font-semibold text-gray-600">Treatment / Instructions</label>
                     <textarea 
                       rows="2" 
-                      placeholder="e.g. Given 1 tablet after food, Rested 30 mins with ice pack"
+                      placeholder="e.g. Given 1 tablet after food, Rested 30 mins"
                       className="w-full mt-1 border p-2 rounded text-sm"
                       value={visitData.treatment_given}
                       onChange={(e) => setVisitData({...visitData, treatment_given: e.target.value})}
@@ -761,10 +762,10 @@ export default function App() {
           )}
         </section>
 
-        {/* Right Section: Stock Tracker & Persistent Activity Queue */}
+        {/* Right Column: Inventory + Clinic Visits timeline */}
         <section className="space-y-6">
           
-          {/* Inventory Stock Dashboard Widget */}
+          {/* Inventory Widget */}
           <div className="bg-white p-5 rounded-lg shadow-sm border border-gray-200">
             <h2 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2 uppercase tracking-wide">
               <Package className="w-4 h-4 text-blue-700" /> Stock Inventory Level
@@ -790,7 +791,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Persistent Clinic Visits Timeline with Ongoing / Done Status */}
+          {/* Clinic Visits & Status Timeline with Trash Button */}
           <div className="bg-white p-5 rounded-lg shadow-sm border border-gray-200">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-sm font-bold text-gray-800 flex items-center gap-2 uppercase tracking-wide">
@@ -823,23 +824,33 @@ export default function App() {
                           <p className="text-[10px] text-gray-400">{v.strand_or_course || 'Grade 11 - ICT 1A'}</p>
                         </div>
 
-                        {/* Interactive Status Toggle Badge (Ongoing vs Done) */}
-                        <button
-                          onClick={() => toggleVisitStatus(v.id)}
-                          title="Click to toggle status (Ongoing <-> Done)"
-                          className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider transition ${
-                            isOngoing
-                              ? 'bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200'
-                              : 'bg-green-100 text-green-800 border border-green-300 hover:bg-green-200'
-                          }`}
-                        >
-                          {isOngoing ? '⏳ Ongoing' : '✓ Done'}
-                        </button>
+                        {/* Status Toggle & Delete Button Group */}
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => toggleVisitStatus(v.id)}
+                            title="Click to toggle status (Ongoing <-> Done)"
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider transition ${
+                              isOngoing
+                                ? 'bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200'
+                                : 'bg-green-100 text-green-800 border border-green-300 hover:bg-green-200'
+                            }`}
+                          >
+                            {isOngoing ? '⏳ Ongoing' : '✓ Done'}
+                          </button>
+
+                          {/* 🗑️ Trash / Delete Item Button */}
+                          <button
+                            onClick={() => handleDeleteVisit(v.id)}
+                            title="Delete this visit entry"
+                            className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                       
                       <p className="text-xs text-gray-700 mt-1 font-medium">{v.chief_complaint}</p>
 
-                      {/* Dispensed Medication Indicator */}
                       {v.medication_given && (
                         <div className="mt-1.5 flex items-center gap-1 text-[11px] text-blue-800 font-semibold bg-blue-50 px-2 py-0.5 rounded w-fit">
                           <Pill className="w-3 h-3 text-blue-600" /> {v.medication_given}
