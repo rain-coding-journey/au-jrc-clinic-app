@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from './context/AuthContext.jsx';
-import API from './services/api';
+import API from './services/api.js';
 
 // Safe Lucide Icon Loader (prevents app crashes if lucide-react is missing/unlinked)
 import * as LucideIcons from 'lucide-react';
