@@ -10,7 +10,8 @@ const AlertTriangle = LucideIcons.AlertTriangle || (({ className }) => <span cla
 const UserCheck = LucideIcons.UserCheck || (({ className }) => <span className={className}>✓</span>);
 const LogOut = LucideIcons.LogOut || (({ className }) => <span className={className}>🚪</span>);
 const Package = LucideIcons.Package || (({ className }) => <span className={className}>📦</span>);
-const PlusCircle = LucideIcons.PlusCircle || (({ className }) => <span className={className}>➕</span>);
+const UserPlus = LucideIcons.UserPlus || (({ className }) => <span className={className}>👤➕</span>);
+const X = LucideIcons.X || (({ className }) => <span className={className}>✕</span>);
 
 export default function App() {
   const auth = useContext(AuthContext) || {};
@@ -28,6 +29,17 @@ export default function App() {
   const [studentNum, setStudentNum] = useState('');
   const [student, setStudent] = useState(null);
   const [lookupError, setLookupError] = useState('');
+
+  // New Student Registration Modal State
+  const [showRegModal, setShowRegModal] = useState(false);
+  const [newStudentData, setNewStudentData] = useState({
+    student_number: '',
+    first_name: '',
+    last_name: '',
+    strand_or_course: 'Grade 11 - ICT 1A',
+    allergies: '',
+    existing_conditions: ''
+  });
 
   // Inventory & Stock State
   const [medications, setMedications] = useState([
@@ -133,19 +145,49 @@ export default function App() {
       }
     } catch (err) {
       if (studentNum.trim().length > 0) {
-        setStudent({
-          id: 101,
-          student_number: studentNum,
-          first_name: 'Student',
-          last_name: 'Record',
-          strand_or_course: 'Grade 11 - ICT 1A',
-          allergies: ['Penicillin'],
-          existing_conditions: ['Asthma']
-        });
+        // Prompt staff to add this new student if not found
+        setLookupError('Student not found. Click "+ Register New Student" to add them to the database.');
+        setNewStudentData(prev => ({ ...prev, student_number: studentNum }));
       } else {
         setLookupError('Please enter a valid Student ID Number.');
       }
     }
+  };
+
+  const handleRegisterStudent = async (e) => {
+    e.preventDefault();
+    const formattedStudent = {
+      id: Date.now(),
+      student_number: newStudentData.student_number,
+      first_name: newStudentData.first_name,
+      last_name: newStudentData.last_name,
+      strand_or_course: newStudentData.strand_or_course,
+      allergies: newStudentData.allergies ? newStudentData.allergies.split(',').map(s => s.trim()) : [],
+      existing_conditions: newStudentData.existing_conditions ? newStudentData.existing_conditions.split(',').map(s => s.trim()) : []
+    };
+
+    try {
+      const res = await API.post('/students', formattedStudent);
+      if (res && res.data) {
+        setStudent(res.data);
+      } else {
+        setStudent(formattedStudent);
+      }
+    } catch (err) {
+      // Offline fallback
+      setStudent(formattedStudent);
+    }
+
+    setShowRegModal(false);
+    setLookupError('');
+    setNewStudentData({
+      student_number: '',
+      first_name: '',
+      last_name: '',
+      strand_or_course: 'Grade 11 - ICT 1A',
+      allergies: '',
+      existing_conditions: ''
+    });
   };
 
   const handleVisitSubmit = async (e) => {
@@ -275,7 +317,118 @@ export default function App() {
 
   // Dashboard Main View
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
+    <div className="min-h-screen bg-gray-50 flex flex-col font-sans relative">
+      
+      {/* Registration Modal Overlay */}
+      {showRegModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-2xl max-w-lg w-full p-6 space-y-4 relative">
+            <button 
+              onClick={() => setShowRegModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="border-b pb-2">
+              <h3 className="text-lg font-bold text-blue-900 flex items-center gap-2">
+                <UserPlus className="w-5 h-5" /> Register New Student Patient
+              </h3>
+              <p className="text-xs text-gray-500">Input student details to add them to the clinic directory.</p>
+            </div>
+
+            <form onSubmit={handleRegisterStudent} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700">Student Number</label>
+                <input 
+                  type="text" 
+                  required 
+                  placeholder="e.g., 2026-10492"
+                  className="w-full mt-1 p-2 border rounded text-xs outline-none focus:border-blue-600"
+                  value={newStudentData.student_number}
+                  onChange={(e) => setNewStudentData({...newStudentData, student_number: e.target.value})}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700">First Name</label>
+                  <input 
+                    type="text" 
+                    required 
+                    placeholder="e.g. Juan"
+                    className="w-full mt-1 p-2 border rounded text-xs outline-none focus:border-blue-600"
+                    value={newStudentData.first_name}
+                    onChange={(e) => setNewStudentData({...newStudentData, first_name: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700">Last Name</label>
+                  <input 
+                    type="text" 
+                    required 
+                    placeholder="e.g. Dela Cruz"
+                    className="w-full mt-1 p-2 border rounded text-xs outline-none focus:border-blue-600"
+                    value={newStudentData.last_name}
+                    onChange={(e) => setNewStudentData({...newStudentData, last_name: e.target.value})}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700">Strand / Grade / Course</label>
+                <input 
+                  type="text" 
+                  required 
+                  placeholder="e.g. Grade 11 - ICT 1A"
+                  className="w-full mt-1 p-2 border rounded text-xs outline-none focus:border-blue-600"
+                  value={newStudentData.strand_or_course}
+                  onChange={(e) => setNewStudentData({...newStudentData, strand_or_course: e.target.value})}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700">Known Allergies (comma-separated)</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. Penicillin, Peanuts (leave blank if none)"
+                  className="w-full mt-1 p-2 border rounded text-xs outline-none focus:border-blue-600"
+                  value={newStudentData.allergies}
+                  onChange={(e) => setNewStudentData({...newStudentData, allergies: e.target.value})}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700">Existing Conditions (comma-separated)</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. Asthma, Hypertension (leave blank if none)"
+                  className="w-full mt-1 p-2 border rounded text-xs outline-none focus:border-blue-600"
+                  value={newStudentData.existing_conditions}
+                  onChange={(e) => setNewStudentData({...newStudentData, existing_conditions: e.target.value})}
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button 
+                  type="button" 
+                  onClick={() => setShowRegModal(false)}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 text-xs rounded font-medium hover:bg-gray-200"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  className="px-4 py-2 bg-blue-800 text-white text-xs rounded font-semibold hover:bg-blue-900"
+                >
+                  Save & Select Student
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Top Navigation Bar */}
       <header className="bg-blue-900 text-white px-6 py-4 flex justify-between items-center shadow-md">
         <div>
@@ -306,11 +459,20 @@ export default function App() {
             </div>
           )}
 
-          {/* Student Lookup Widget */}
+          {/* Student Lookup & Registration Bar */}
           <div className="bg-white p-5 rounded-lg shadow-sm border border-gray-200">
-            <h2 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2 uppercase tracking-wide">
-              <Search className="w-4 h-4 text-blue-700" /> Patient Lookup
-            </h2>
+            <div className="flex justify-between items-center mb-3">
+              <h2 className="text-sm font-bold text-gray-800 flex items-center gap-2 uppercase tracking-wide">
+                <Search className="w-4 h-4 text-blue-700" /> Patient Lookup
+              </h2>
+              <button 
+                onClick={() => setShowRegModal(true)}
+                className="text-xs bg-blue-50 text-blue-800 border border-blue-200 px-3 py-1 rounded font-semibold hover:bg-blue-100 flex items-center gap-1 transition"
+              >
+                <UserPlus className="w-3.5 h-3.5" /> + Register New Student
+              </button>
+            </div>
+
             <form onSubmit={handleStudentLookup} className="flex gap-2">
               <input 
                 type="text" 
@@ -323,7 +485,7 @@ export default function App() {
                 Search
               </button>
             </form>
-            {lookupError && <p className="text-xs text-red-500 mt-2">{lookupError}</p>}
+            {lookupError && <p className="text-xs text-red-500 mt-2 font-medium">{lookupError}</p>}
           </div>
 
           {/* Intake Entry Form */}
@@ -341,25 +503,34 @@ export default function App() {
 
               {/* Medical Flags */}
               <div className="flex flex-wrap gap-2 text-xs">
-                {student.allergies?.map((allergy, idx) => (
-                  <span key={idx} className="bg-red-100 text-red-700 px-2.5 py-0.5 rounded-full font-medium">
-                    Allergy: {allergy}
-                  </span>
-                ))}
-                {student.existing_conditions?.map((cond, idx) => (
-                  <span key={idx} className="bg-yellow-100 text-yellow-800 px-2.5 py-0.5 rounded-full font-medium">
-                    Condition: {cond}
-                  </span>
-                ))}
+                {student.allergies?.length > 0 ? (
+                  student.allergies.map((allergy, idx) => (
+                    <span key={idx} className="bg-red-100 text-red-700 px-2.5 py-0.5 rounded-full font-medium">
+                      Allergy: {allergy}
+                    </span>
+                  ))
+                ) : (
+                  <span className="bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full text-[11px]">No known allergies</span>
+                )}
+
+                {student.existing_conditions?.length > 0 ? (
+                  student.existing_conditions.map((cond, idx) => (
+                    <span key={idx} className="bg-yellow-100 text-yellow-800 px-2.5 py-0.5 rounded-full font-medium">
+                      Condition: {cond}
+                    </span>
+                  ))
+                ) : (
+                  <span className="bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full text-[11px]">No existing conditions</span>
+                )}
               </div>
 
               <form onSubmit={handleVisitSubmit} className="space-y-4 pt-2">
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 uppercase">Chief Complaint</label>
+                  <label className="block text-xs font-bold text-gray-700 uppercase">Chief Complaint / Sickness</label>
                   <input 
                     type="text" 
                     required 
-                    placeholder="e.g. Headache, High Fever, Wound Dressing" 
+                    placeholder="e.g. Dysmenorrhea, Fever, Headache, Wound Dressing" 
                     className="w-full mt-1 border p-2 rounded text-sm outline-none focus:border-blue-600"
                     value={visitData.chief_complaint}
                     onChange={(e) => setVisitData({...visitData, chief_complaint: e.target.value})}
@@ -417,7 +588,7 @@ export default function App() {
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div className="md:col-span-2">
-                      <label className="block text-[11px] font-semibold text-gray-600">Select Medicine</label>
+                      <label className="block text-[11px] font-semibold text-gray-600">Select Medicine for Sickness</label>
                       <select 
                         className="w-full mt-1 border p-2 rounded text-xs bg-white"
                         value={visitData.selected_medication_id}
@@ -447,10 +618,10 @@ export default function App() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-gray-600">Treatment Provided</label>
+                    <label className="block text-xs font-semibold text-gray-600">Treatment / Instructions Provided</label>
                     <textarea 
                       rows="2" 
-                      placeholder="e.g. Prescribed Paracetamol, Rested 30 mins"
+                      placeholder="e.g. Given 1 tablet after food, Rested 30 mins with ice pack"
                       className="w-full mt-1 border p-2 rounded text-sm"
                       value={visitData.treatment_given}
                       onChange={(e) => setVisitData({...visitData, treatment_given: e.target.value})}
