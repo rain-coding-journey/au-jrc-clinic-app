@@ -2,18 +2,20 @@ import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from './context/AuthContext.jsx';
 import API from './services/api.js';
 
-// Safe Lucide Icon Loader (prevents app crashes if lucide-react is missing/unlinked)
+// Safe Lucide Icon Loader
 import * as LucideIcons from 'lucide-react';
 const Search = LucideIcons.Search || (({ className }) => <span className={className}>🔍</span>);
 const Activity = LucideIcons.Activity || (({ className }) => <span className={className}>📊</span>);
 const AlertTriangle = LucideIcons.AlertTriangle || (({ className }) => <span className={className}>⚠️</span>);
 const UserCheck = LucideIcons.UserCheck || (({ className }) => <span className={className}>✓</span>);
 const LogOut = LucideIcons.LogOut || (({ className }) => <span className={className}>🚪</span>);
+const Package = LucideIcons.Package || (({ className }) => <span className={className}>📦</span>);
+const PlusCircle = LucideIcons.PlusCircle || (({ className }) => <span className={className}>➕</span>);
 
 export default function App() {
   const auth = useContext(AuthContext) || {};
   
-  // Local token state (defaults to empty string so Sign-In view displays initially if not logged in)
+  // Local token state
   const [localToken, setLocalToken] = useState(() => auth.token || localStorage.getItem('demo_token') || '');
   const user = auth.user || { full_name: 'AU Clinic Staff', role: 'Nurse / Administrator' };
 
@@ -27,6 +29,14 @@ export default function App() {
   const [student, setStudent] = useState(null);
   const [lookupError, setLookupError] = useState('');
 
+  // Inventory & Stock State
+  const [medications, setMedications] = useState([
+    { id: '1', name: 'Paracetamol', dosage_form: 'Tablet', strength: '500mg', stock_quantity: 120, reorder_threshold: 30 },
+    { id: '2', name: 'Amoxicillin', dosage_form: 'Capsule', strength: '250mg', stock_quantity: 12, reorder_threshold: 20 },
+    { id: '3', name: 'Cetirizine', dosage_form: 'Tablet', strength: '10mg', stock_quantity: 45, reorder_threshold: 15 },
+    { id: '4', name: 'Mefenamic Acid', dosage_form: 'Capsule', strength: '500mg', stock_quantity: 8, reorder_threshold: 15 }
+  ]);
+
   // Intake Form Payload
   const [visitData, setVisitData] = useState({
     chief_complaint: '',
@@ -35,7 +45,9 @@ export default function App() {
     pulse_rate_bpm: '',
     respiratory_rate: '',
     treatment_given: '',
-    medication_administered: '',
+    selected_medication_id: '',
+    medication_qty: 1,
+    dosage_instructions: '',
     disposition: 'Returned to Class'
   });
 
@@ -63,9 +75,21 @@ export default function App() {
     }
   };
 
+  const fetchInventory = async () => {
+    try {
+      const res = await API.get('/inventory');
+      if (res && res.data && Array.isArray(res.data)) {
+        setMedications(res.data);
+      }
+    } catch (err) {
+      console.warn('Backend inventory API offline. Using demo stock list.', err);
+    }
+  };
+
   useEffect(() => {
     if (localToken) {
       fetchRecentVisits();
+      fetchInventory();
     }
   }, [localToken]);
 
@@ -84,7 +108,6 @@ export default function App() {
     } catch (err) {
       console.warn('Backend server offline. Proceeding in Demo mode.');
     } finally {
-      // Force token state update so React re-renders to the dashboard instantly
       const activeToken = 'demo-active-token';
       localStorage.setItem('demo_token', activeToken);
       setLocalToken(activeToken);
@@ -109,7 +132,6 @@ export default function App() {
         throw new Error('NotFound');
       }
     } catch (err) {
-      // Demo Student Fallback for testing UI without database
       if (studentNum.trim().length > 0) {
         setStudent({
           id: 101,
@@ -130,6 +152,28 @@ export default function App() {
     e.preventDefault();
     if (!student) return;
 
+    // Deduct stock if medication selected
+    if (visitData.selected_medication_id) {
+      const selectedMed = medications.find(m => m.id === visitData.selected_medication_id || m.medication_id === visitData.selected_medication_id);
+      if (selectedMed) {
+        const reqQty = parseInt(visitData.medication_qty || 1);
+        if (selectedMed.stock_quantity < reqQty) {
+          alert(`Insufficient stock for ${selectedMed.name}! Current stock: ${selectedMed.stock_quantity}`);
+          return;
+        }
+
+        // Deduct inventory stock locally
+        setMedications(prevMeds =>
+          prevMeds.map(med => {
+            const medId = med.id || med.medication_id;
+            return medId === visitData.selected_medication_id
+              ? { ...med, stock_quantity: med.stock_quantity - reqQty }
+              : med;
+          })
+        );
+      }
+    }
+
     try {
       const res = await API.post('/visits', {
         student_id: student.id,
@@ -142,7 +186,6 @@ export default function App() {
         setAlertBanner(null);
       }
     } catch (err) {
-      // Demo local state append if API is offline
       const newEntry = {
         id: Date.now(),
         first_name: student.first_name,
@@ -169,7 +212,9 @@ export default function App() {
       pulse_rate_bpm: '',
       respiratory_rate: '',
       treatment_given: '',
-      medication_administered: '',
+      selected_medication_id: '',
+      medication_qty: 1,
+      dosage_instructions: '',
       disposition: 'Returned to Class'
     });
     setStudent(null);
@@ -248,7 +293,7 @@ export default function App() {
       {/* Main Dashboard Layout */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* Left Section: Search and Entry Form */}
+        {/* Left Section: Search, Intake and Prescription Form */}
         <section className="lg:col-span-2 space-y-6">
           
           {alertBanner && (
@@ -365,6 +410,41 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Prescription & Dispensing Input Block */}
+                <div className="border-t pt-3 bg-blue-50/70 p-3 rounded-lg">
+                  <h4 className="text-xs font-bold text-blue-900 uppercase mb-2 flex items-center gap-1">
+                    <Package className="w-3.5 h-3.5" /> Medication Prescribed & Dispensed
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="md:col-span-2">
+                      <label className="block text-[11px] font-semibold text-gray-600">Select Medicine</label>
+                      <select 
+                        className="w-full mt-1 border p-2 rounded text-xs bg-white"
+                        value={visitData.selected_medication_id}
+                        onChange={(e) => setVisitData({...visitData, selected_medication_id: e.target.value})}
+                      >
+                        <option value="">-- No Medication Dispensed --</option>
+                        {medications.map(med => {
+                          const id = med.id || med.medication_id;
+                          return (
+                            <option key={id} value={id}>
+                              {med.name} {med.strength} ({med.stock_quantity} in stock)
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-gray-600">Dispense Qty</label>
+                      <input 
+                        type="number" min="1" className="w-full mt-1 border p-2 rounded text-xs bg-white"
+                        value={visitData.medication_qty}
+                        onChange={(e) => setVisitData({...visitData, medication_qty: e.target.value})}
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-gray-600">Treatment Provided</label>
@@ -392,41 +472,72 @@ export default function App() {
                 </div>
 
                 <button type="submit" className="w-full bg-blue-800 text-white font-bold py-2 rounded text-sm hover:bg-blue-900 transition">
-                  Save Visit Entry
+                  Save Visit Entry & Complete Dispensing
                 </button>
               </form>
             </div>
           )}
         </section>
 
-        {/* Right Section: Recent Activity Queue */}
-        <section className="bg-white p-5 rounded-lg shadow-sm border border-gray-200">
-          <h2 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2 uppercase tracking-wide">
-            <Activity className="w-4 h-4 text-blue-700" /> Recent Clinic Visits
-          </h2>
-          <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
-            {recentVisits.length === 0 ? (
-              <p className="text-xs text-gray-400">No recent visits recorded today.</p>
-            ) : (
-              recentVisits.map((v) => (
-                <div key={v.id || Math.random()} className="p-3 border-b last:border-0 hover:bg-gray-50 rounded transition">
-                  <div className="flex justify-between items-start">
-                    <span className="font-semibold text-sm text-gray-800">{v.first_name} {v.last_name}</span>
-                    <span className="text-[10px] text-gray-400">
-                      {v.visit_timestamp ? new Date(v.visit_timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}
-                    </span>
+        {/* Right Section: Stock Tracker & Recent Activity Queue */}
+        <section className="space-y-6">
+          
+          {/* Inventory Stock Dashboard Widget */}
+          <div className="bg-white p-5 rounded-lg shadow-sm border border-gray-200">
+            <h2 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2 uppercase tracking-wide">
+              <Package className="w-4 h-4 text-blue-700" /> Stock Inventory Level
+            </h2>
+            <div className="space-y-2">
+              {medications.map((med) => {
+                const id = med.id || med.medication_id;
+                const isLow = med.stock_quantity <= med.reorder_threshold;
+                return (
+                  <div key={id} className="flex justify-between items-center text-xs p-2 bg-gray-50 rounded border">
+                    <div>
+                      <p className="font-bold text-gray-800">{med.name} <span className="font-normal text-gray-500">({med.strength})</span></p>
+                      <p className="text-[10px] text-gray-400">{med.dosage_form}</p>
+                    </div>
+                    <div className="text-right">
+                      <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${isLow ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-800'}`}>
+                        {med.stock_quantity} pcs {isLow ? '(LOW)' : ''}
+                      </span>
+                    </div>
                   </div>
-                  <p className="text-xs text-gray-600 mt-0.5">{v.chief_complaint}</p>
-                  <div className="mt-2 flex justify-between items-center text-[11px]">
-                    <span className={`px-2 py-0.5 rounded font-medium ${parseFloat(v.temperature_celsius) >= 38.5 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
-                      {v.temperature_celsius ? `${v.temperature_celsius}°C` : 'N/A'}
-                    </span>
-                    <span className="text-blue-900 font-medium">{v.disposition}</span>
-                  </div>
-                </div>
-              ))
-            )}
+                );
+              })}
+            </div>
           </div>
+
+          {/* Recent Activity Queue */}
+          <div className="bg-white p-5 rounded-lg shadow-sm border border-gray-200">
+            <h2 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2 uppercase tracking-wide">
+              <Activity className="w-4 h-4 text-blue-700" /> Recent Clinic Visits
+            </h2>
+            <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
+              {recentVisits.length === 0 ? (
+                <p className="text-xs text-gray-400">No recent visits recorded today.</p>
+              ) : (
+                recentVisits.map((v) => (
+                  <div key={v.id || Math.random()} className="p-3 border-b last:border-0 hover:bg-gray-50 rounded transition">
+                    <div className="flex justify-between items-start">
+                      <span className="font-semibold text-sm text-gray-800">{v.first_name} {v.last_name}</span>
+                      <span className="text-[10px] text-gray-400">
+                        {v.visit_timestamp ? new Date(v.visit_timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-600 mt-0.5">{v.chief_complaint}</p>
+                    <div className="mt-2 flex justify-between items-center text-[11px]">
+                      <span className={`px-2 py-0.5 rounded font-medium ${parseFloat(v.temperature_celsius) >= 38.5 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
+                        {v.temperature_celsius ? `${v.temperature_celsius}°C` : 'N/A'}
+                      </span>
+                      <span className="text-blue-900 font-medium">{v.disposition}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
         </section>
 
       </main>
