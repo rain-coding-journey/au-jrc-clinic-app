@@ -12,6 +12,7 @@ const LogOut = LucideIcons.LogOut || (({ className }) => <span className={classN
 const Package = LucideIcons.Package || (({ className }) => <span className={className}>📦</span>);
 const UserPlus = LucideIcons.UserPlus || (({ className }) => <span className={className}>👤➕</span>);
 const X = LucideIcons.X || (({ className }) => <span className={className}>✕</span>);
+const Pill = LucideIcons.Pill || (({ className }) => <span className={className}>💊</span>);
 
 export default function App() {
   const auth = useContext(AuthContext) || {};
@@ -63,6 +64,7 @@ export default function App() {
     disposition: 'Returned to Class'
   });
 
+  // Recent Visits Queue state
   const [recentVisits, setRecentVisits] = useState([
     {
       id: 1,
@@ -70,6 +72,7 @@ export default function App() {
       last_name: 'Dela Cruz',
       chief_complaint: 'Fever and Dizziness',
       temperature_celsius: '38.2',
+      medication_given: 'Paracetamol 500mg (1 pc)',
       disposition: 'Rested in Clinic Bed',
       visit_timestamp: new Date().toISOString()
     }
@@ -83,7 +86,7 @@ export default function App() {
         setRecentVisits(res.data);
       }
     } catch (err) {
-      console.warn('Backend API connection offline. Displaying local demo queue.', err);
+      console.warn('Backend API connection offline. Displaying local queue.', err);
     }
   };
 
@@ -145,7 +148,6 @@ export default function App() {
       }
     } catch (err) {
       if (studentNum.trim().length > 0) {
-        // Prompt staff to add this new student if not found
         setLookupError('Student not found. Click "+ Register New Student" to add them to the database.');
         setNewStudentData(prev => ({ ...prev, student_number: studentNum }));
       } else {
@@ -174,7 +176,6 @@ export default function App() {
         setStudent(formattedStudent);
       }
     } catch (err) {
-      // Offline fallback
       setStudent(formattedStudent);
     }
 
@@ -194,6 +195,8 @@ export default function App() {
     e.preventDefault();
     if (!student) return;
 
+    let medLabel = '';
+
     // Deduct stock if medication selected
     if (visitData.selected_medication_id) {
       const selectedMed = medications.find(m => m.id === visitData.selected_medication_id || m.medication_id === visitData.selected_medication_id);
@@ -203,6 +206,8 @@ export default function App() {
           alert(`Insufficient stock for ${selectedMed.name}! Current stock: ${selectedMed.stock_quantity}`);
           return;
         }
+
+        medLabel = `${selectedMed.name} ${selectedMed.strength} (${reqQty} pc${reqQty > 1 ? 's' : ''})`;
 
         // Deduct inventory stock locally
         setMedications(prevMeds =>
@@ -216,6 +221,17 @@ export default function App() {
       }
     }
 
+    const newVisitRecord = {
+      id: Date.now(),
+      first_name: student.first_name,
+      last_name: student.last_name,
+      chief_complaint: visitData.chief_complaint,
+      temperature_celsius: visitData.temperature_celsius || '36.5',
+      medication_given: medLabel,
+      disposition: visitData.disposition,
+      visit_timestamp: new Date().toISOString()
+    };
+
     try {
       const res = await API.post('/visits', {
         student_id: student.id,
@@ -228,17 +244,6 @@ export default function App() {
         setAlertBanner(null);
       }
     } catch (err) {
-      const newEntry = {
-        id: Date.now(),
-        first_name: student.first_name,
-        last_name: student.last_name,
-        chief_complaint: visitData.chief_complaint,
-        temperature_celsius: visitData.temperature_celsius || '36.5',
-        disposition: visitData.disposition,
-        visit_timestamp: new Date().toISOString()
-      };
-      setRecentVisits((prev) => [newEntry, ...prev]);
-
       if (parseFloat(visitData.temperature_celsius) >= 38.5) {
         setAlertBanner(`High fever alert detected for ${student.first_name} ${student.last_name} (${visitData.temperature_celsius}°C).`);
       } else {
@@ -246,7 +251,10 @@ export default function App() {
       }
     }
 
-    // Reset Form
+    // Always push to the top of Recent Clinic Visits!
+    setRecentVisits((prev) => [newVisitRecord, ...prev]);
+
+    // Reset Intake Form
     setVisitData({
       chief_complaint: '',
       temperature_celsius: '',
@@ -530,7 +538,7 @@ export default function App() {
                   <input 
                     type="text" 
                     required 
-                    placeholder="e.g. Dysmenorrhea, Fever, Headache, Wound Dressing" 
+                    placeholder="e.g. Fever, Headache, Stomachache" 
                     className="w-full mt-1 border p-2 rounded text-sm outline-none focus:border-blue-600"
                     value={visitData.chief_complaint}
                     onChange={(e) => setVisitData({...visitData, chief_complaint: e.target.value})}
@@ -679,29 +687,38 @@ export default function App() {
             </div>
           </div>
 
-          {/* Recent Activity Queue */}
+          {/* Recent Activity Queue (Matching the Card Component) */}
           <div className="bg-white p-5 rounded-lg shadow-sm border border-gray-200">
             <h2 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2 uppercase tracking-wide">
               <Activity className="w-4 h-4 text-blue-700" /> Recent Clinic Visits
             </h2>
-            <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
+            <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
               {recentVisits.length === 0 ? (
                 <p className="text-xs text-gray-400">No recent visits recorded today.</p>
               ) : (
                 recentVisits.map((v) => (
-                  <div key={v.id || Math.random()} className="p-3 border-b last:border-0 hover:bg-gray-50 rounded transition">
+                  <div key={v.id || Math.random()} className="p-3.5 bg-white border rounded-md shadow-xs hover:border-blue-200 transition">
                     <div className="flex justify-between items-start">
-                      <span className="font-semibold text-sm text-gray-800">{v.first_name} {v.last_name}</span>
-                      <span className="text-[10px] text-gray-400">
-                        {v.visit_timestamp ? new Date(v.visit_timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}
+                      <span className="font-bold text-sm text-gray-900">{v.first_name} {v.last_name}</span>
+                      <span className="text-[11px] text-gray-400">
+                        {v.visit_timestamp ? new Date(v.visit_timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '09:16 AM'}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-600 mt-0.5">{v.chief_complaint}</p>
-                    <div className="mt-2 flex justify-between items-center text-[11px]">
-                      <span className={`px-2 py-0.5 rounded font-medium ${parseFloat(v.temperature_celsius) >= 38.5 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
-                        {v.temperature_celsius ? `${v.temperature_celsius}°C` : 'N/A'}
+                    
+                    <p className="text-xs text-gray-600 mt-0.5 font-medium">{v.chief_complaint}</p>
+
+                    {/* Given Medicine Indicator */}
+                    {v.medication_given && (
+                      <div className="mt-1.5 flex items-center gap-1 text-[11px] text-blue-800 font-semibold bg-blue-50 px-2 py-0.5 rounded w-fit">
+                        <Pill className="w-3 h-3 text-blue-600" /> {v.medication_given}
+                      </div>
+                    )}
+
+                    <div className="mt-2.5 flex justify-between items-center text-xs">
+                      <span className={`px-2 py-0.5 rounded font-medium text-[11px] ${parseFloat(v.temperature_celsius) >= 38.5 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
+                        {v.temperature_celsius ? `${v.temperature_celsius}°C` : '36.5°C'}
                       </span>
-                      <span className="text-blue-900 font-medium">{v.disposition}</span>
+                      <span className="text-blue-900 font-bold text-[11px]">{v.disposition}</span>
                     </div>
                   </div>
                 ))
