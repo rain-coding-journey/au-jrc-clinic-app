@@ -31,6 +31,22 @@ export default function App() {
   const [student, setStudent] = useState(null);
   const [lookupError, setLookupError] = useState('');
 
+  // Persistent Registered Students Directory Storage
+  const [registeredStudents, setRegisteredStudents] = useState(() => {
+    const saved = localStorage.getItem('au_registered_students');
+    return saved ? JSON.parse(saved) : [
+      {
+        id: '2026-10492',
+        student_number: '2026-10492',
+        first_name: 'Juan',
+        last_name: 'Dela Cruz',
+        strand_or_course: 'Grade 11 - ICT 1A',
+        allergies: ['Penicillin'],
+        existing_conditions: ['Asthma']
+      }
+    ];
+  });
+
   // New Student Registration Modal State
   const [showRegModal, setShowRegModal] = useState(false);
   const [newStudentData, setNewStudentData] = useState({
@@ -43,12 +59,15 @@ export default function App() {
   });
 
   // Inventory & Stock State
-  const [medications, setMedications] = useState([
-    { id: '1', name: 'Paracetamol', dosage_form: 'Tablet', strength: '500mg', stock_quantity: 120, reorder_threshold: 30 },
-    { id: '2', name: 'Amoxicillin', dosage_form: 'Capsule', strength: '250mg', stock_quantity: 12, reorder_threshold: 20 },
-    { id: '3', name: 'Cetirizine', dosage_form: 'Tablet', strength: '10mg', stock_quantity: 45, reorder_threshold: 15 },
-    { id: '4', name: 'Mefenamic Acid', dosage_form: 'Capsule', strength: '500mg', stock_quantity: 8, reorder_threshold: 15 }
-  ]);
+  const [medications, setMedications] = useState(() => {
+    const saved = localStorage.getItem('au_inventory');
+    return saved ? JSON.parse(saved) : [
+      { id: '1', name: 'Paracetamol', dosage_form: 'Tablet', strength: '500mg', stock_quantity: 120, reorder_threshold: 30 },
+      { id: '2', name: 'Amoxicillin', dosage_form: 'Capsule', strength: '250mg', stock_quantity: 12, reorder_threshold: 20 },
+      { id: '3', name: 'Cetirizine', dosage_form: 'Tablet', strength: '10mg', stock_quantity: 45, reorder_threshold: 15 },
+      { id: '4', name: 'Mefenamic Acid', dosage_form: 'Capsule', strength: '500mg', stock_quantity: 8, reorder_threshold: 15 }
+    ];
+  });
 
   // Intake Form Payload
   const [visitData, setVisitData] = useState({
@@ -61,43 +80,63 @@ export default function App() {
     selected_medication_id: '',
     medication_qty: 1,
     dosage_instructions: '',
-    disposition: 'Returned to Class'
+    disposition: 'Rested in Clinic Bed'
   });
 
-  // Recent Visits Queue state
-  const [recentVisits, setRecentVisits] = useState([
-    {
-      id: 1,
-      first_name: 'Juan',
-      last_name: 'Dela Cruz',
-      chief_complaint: 'Fever and Dizziness',
-      temperature_celsius: '38.2',
-      medication_given: 'Paracetamol 500mg (1 pc)',
-      disposition: 'Rested in Clinic Bed',
-      visit_timestamp: new Date().toISOString()
-    }
-  ]);
+  // Persistent Recent Visits Queue state (with Status: "Ongoing" | "Done")
+  const [recentVisits, setRecentVisits] = useState(() => {
+    const saved = localStorage.getItem('au_recent_visits');
+    return saved ? JSON.parse(saved) : [
+      {
+        id: 1,
+        student_number: '2026-10492',
+        first_name: 'Juan',
+        last_name: 'Dela Cruz',
+        strand_or_course: 'Grade 11 - ICT 1A',
+        chief_complaint: 'Fever and Dizziness',
+        temperature_celsius: '38.2',
+        medication_given: 'Paracetamol 500mg (1 pc)',
+        disposition: 'Rested in Clinic Bed',
+        status: 'Ongoing', // 'Ongoing' or 'Done'
+        visit_timestamp: new Date().toISOString()
+      }
+    ];
+  });
+
   const [alertBanner, setAlertBanner] = useState(null);
+
+  // Sync state to local storage on changes
+  useEffect(() => {
+    localStorage.setItem('au_registered_students', JSON.stringify(registeredStudents));
+  }, [registeredStudents]);
+
+  useEffect(() => {
+    localStorage.setItem('au_recent_visits', JSON.stringify(recentVisits));
+  }, [recentVisits]);
+
+  useEffect(() => {
+    localStorage.setItem('au_inventory', JSON.stringify(medications));
+  }, [medications]);
 
   const fetchRecentVisits = async () => {
     try {
       const res = await API.get('/visits/recent');
-      if (res && res.data && Array.isArray(res.data)) {
+      if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
         setRecentVisits(res.data);
       }
     } catch (err) {
-      console.warn('Backend API connection offline. Displaying local queue.', err);
+      console.warn('Backend API connection offline. Using local stored queue.');
     }
   };
 
   const fetchInventory = async () => {
     try {
       const res = await API.get('/inventory');
-      if (res && res.data && Array.isArray(res.data)) {
+      if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
         setMedications(res.data);
       }
     } catch (err) {
-      console.warn('Backend inventory API offline. Using demo stock list.', err);
+      console.warn('Backend inventory API offline. Using local stored inventory.');
     }
   };
 
@@ -139,6 +178,20 @@ export default function App() {
     e.preventDefault();
     setLookupError('');
     setStudent(null);
+
+    const query = studentNum.trim().toLowerCase();
+
+    // First check persistent local storage
+    const localMatch = registeredStudents.find(
+      s => s.student_number.toLowerCase() === query || s.id.toString().toLowerCase() === query
+    );
+
+    if (localMatch) {
+      setStudent(localMatch);
+      return;
+    }
+
+    // Attempt backend search
     try {
       const res = await API.get(`/students/${studentNum}`);
       if (res && res.data) {
@@ -159,7 +212,7 @@ export default function App() {
   const handleRegisterStudent = async (e) => {
     e.preventDefault();
     const formattedStudent = {
-      id: Date.now(),
+      id: newStudentData.student_number || Date.now().toString(),
       student_number: newStudentData.student_number,
       first_name: newStudentData.first_name,
       last_name: newStudentData.last_name,
@@ -168,15 +221,14 @@ export default function App() {
       existing_conditions: newStudentData.existing_conditions ? newStudentData.existing_conditions.split(',').map(s => s.trim()) : []
     };
 
+    // Save to Persistent Local Storage State
+    setRegisteredStudents(prev => [formattedStudent, ...prev.filter(s => s.student_number !== formattedStudent.student_number)]);
+    setStudent(formattedStudent);
+
     try {
-      const res = await API.post('/students', formattedStudent);
-      if (res && res.data) {
-        setStudent(res.data);
-      } else {
-        setStudent(formattedStudent);
-      }
+      await API.post('/students', formattedStudent);
     } catch (err) {
-      setStudent(formattedStudent);
+      console.warn('Offline mode: Saved student locally.');
     }
 
     setShowRegModal(false);
@@ -221,14 +273,20 @@ export default function App() {
       }
     }
 
+    // Determine initial status based on disposition
+    const isDone = visitData.disposition === 'Returned to Class' || visitData.disposition === 'Sent Home / Fetched by Parent';
+
     const newVisitRecord = {
       id: Date.now(),
+      student_number: student.student_number,
       first_name: student.first_name,
       last_name: student.last_name,
+      strand_or_course: student.strand_or_course,
       chief_complaint: visitData.chief_complaint,
       temperature_celsius: visitData.temperature_celsius || '36.5',
       medication_given: medLabel,
       disposition: visitData.disposition,
+      status: isDone ? 'Done' : 'Ongoing', // Ongoing if bed rest / referred
       visit_timestamp: new Date().toISOString()
     };
 
@@ -251,10 +309,10 @@ export default function App() {
       }
     }
 
-    // Always push to the top of Recent Clinic Visits!
+    // Save to Persistent Queue
     setRecentVisits((prev) => [newVisitRecord, ...prev]);
 
-    // Reset Intake Form
+    // Reset Form
     setVisitData({
       chief_complaint: '',
       temperature_celsius: '',
@@ -265,10 +323,36 @@ export default function App() {
       selected_medication_id: '',
       medication_qty: 1,
       dosage_instructions: '',
-      disposition: 'Returned to Class'
+      disposition: 'Rested in Clinic Bed'
     });
     setStudent(null);
     setStudentNum('');
+  };
+
+  // Function to toggle visit status (Ongoing <-> Done)
+  const toggleVisitStatus = (visitId) => {
+    setRecentVisits(prev =>
+      prev.map(v => {
+        if (v.id === visitId) {
+          const nextStatus = v.status === 'Ongoing' ? 'Done' : 'Ongoing';
+          return {
+            ...v,
+            status: nextStatus,
+            disposition: nextStatus === 'Done' ? 'Returned to Class' : 'Rested in Clinic Bed'
+          };
+        }
+        return v;
+      })
+    );
+  };
+
+  // Quick Select Student from recent list or registered list
+  const selectStudentFromRecord = (studentNo) => {
+    const match = registeredStudents.find(s => s.student_number === studentNo);
+    if (match) {
+      setStudent(match);
+      setStudentNum(match.student_number);
+    }
   };
 
   // Sign-in Screen View
@@ -342,7 +426,7 @@ export default function App() {
               <h3 className="text-lg font-bold text-blue-900 flex items-center gap-2">
                 <UserPlus className="w-5 h-5" /> Register New Student Patient
               </h3>
-              <p className="text-xs text-gray-500">Input student details to add them to the clinic directory.</p>
+              <p className="text-xs text-gray-500">Input student details to permanently store in clinic records.</p>
             </div>
 
             <form onSubmit={handleRegisterStudent} className="space-y-3">
@@ -494,6 +578,25 @@ export default function App() {
               </button>
             </form>
             {lookupError && <p className="text-xs text-red-500 mt-2 font-medium">{lookupError}</p>}
+
+            {/* Quick Registered Students List Pills */}
+            {registeredStudents.length > 0 && (
+              <div className="mt-4 pt-3 border-t">
+                <p className="text-[11px] font-bold text-gray-500 uppercase mb-2">Saved / Registered Students (Click to Select):</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {registeredStudents.map((reg) => (
+                    <button
+                      key={reg.student_number}
+                      onClick={() => selectStudentFromRecord(reg.student_number)}
+                      className="text-xs bg-gray-100 hover:bg-blue-50 border border-gray-300 hover:border-blue-400 text-gray-800 px-2.5 py-1 rounded-md transition text-left flex items-center gap-1"
+                    >
+                      <span className="font-semibold">{reg.first_name} {reg.last_name}</span>
+                      <span className="text-[10px] text-gray-500">({reg.student_number})</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Intake Entry Form */}
@@ -642,8 +745,8 @@ export default function App() {
                       value={visitData.disposition}
                       onChange={(e) => setVisitData({...visitData, disposition: e.target.value})}
                     >
-                      <option>Returned to Class</option>
                       <option>Rested in Clinic Bed</option>
+                      <option>Returned to Class</option>
                       <option>Sent Home / Fetched by Parent</option>
                       <option>Referred to Hospital</option>
                     </select>
@@ -658,7 +761,7 @@ export default function App() {
           )}
         </section>
 
-        {/* Right Section: Stock Tracker & Recent Activity Queue */}
+        {/* Right Section: Stock Tracker & Persistent Activity Queue */}
         <section className="space-y-6">
           
           {/* Inventory Stock Dashboard Widget */}
@@ -687,41 +790,71 @@ export default function App() {
             </div>
           </div>
 
-          {/* Recent Activity Queue (Matching the Card Component) */}
+          {/* Persistent Clinic Visits Timeline with Ongoing / Done Status */}
           <div className="bg-white p-5 rounded-lg shadow-sm border border-gray-200">
-            <h2 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2 uppercase tracking-wide">
-              <Activity className="w-4 h-4 text-blue-700" /> Recent Clinic Visits
-            </h2>
-            <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-sm font-bold text-gray-800 flex items-center gap-2 uppercase tracking-wide">
+                <Activity className="w-4 h-4 text-blue-700" /> Clinic Visits & Status
+              </h2>
+              <span className="text-[11px] bg-blue-50 text-blue-800 px-2 py-0.5 rounded font-bold">
+                {recentVisits.filter(v => v.status === 'Ongoing').length} Ongoing
+              </span>
+            </div>
+
+            <div className="space-y-3 max-h-[480px] overflow-y-auto pr-1">
               {recentVisits.length === 0 ? (
-                <p className="text-xs text-gray-400">No recent visits recorded today.</p>
+                <p className="text-xs text-gray-400">No recent visits recorded.</p>
               ) : (
-                recentVisits.map((v) => (
-                  <div key={v.id || Math.random()} className="p-3.5 bg-white border rounded-md shadow-xs hover:border-blue-200 transition">
-                    <div className="flex justify-between items-start">
-                      <span className="font-bold text-sm text-gray-900">{v.first_name} {v.last_name}</span>
-                      <span className="text-[11px] text-gray-400">
-                        {v.visit_timestamp ? new Date(v.visit_timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '09:16 AM'}
-                      </span>
-                    </div>
-                    
-                    <p className="text-xs text-gray-600 mt-0.5 font-medium">{v.chief_complaint}</p>
+                recentVisits.map((v) => {
+                  const isOngoing = v.status === 'Ongoing';
+                  return (
+                    <div 
+                      key={v.id || Math.random()} 
+                      className={`p-3.5 bg-white border rounded-md shadow-xs transition ${isOngoing ? 'border-amber-300 bg-amber-50/20' : 'border-gray-200'}`}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <button 
+                            onClick={() => selectStudentFromRecord(v.student_number)}
+                            className="font-bold text-sm text-gray-900 hover:text-blue-800 text-left transition"
+                          >
+                            {v.first_name} {v.last_name}
+                          </button>
+                          <p className="text-[10px] text-gray-400">{v.strand_or_course || 'Grade 11 - ICT 1A'}</p>
+                        </div>
 
-                    {/* Given Medicine Indicator */}
-                    {v.medication_given && (
-                      <div className="mt-1.5 flex items-center gap-1 text-[11px] text-blue-800 font-semibold bg-blue-50 px-2 py-0.5 rounded w-fit">
-                        <Pill className="w-3 h-3 text-blue-600" /> {v.medication_given}
+                        {/* Interactive Status Toggle Badge (Ongoing vs Done) */}
+                        <button
+                          onClick={() => toggleVisitStatus(v.id)}
+                          title="Click to toggle status (Ongoing <-> Done)"
+                          className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider transition ${
+                            isOngoing
+                              ? 'bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200'
+                              : 'bg-green-100 text-green-800 border border-green-300 hover:bg-green-200'
+                          }`}
+                        >
+                          {isOngoing ? '⏳ Ongoing' : '✓ Done'}
+                        </button>
                       </div>
-                    )}
+                      
+                      <p className="text-xs text-gray-700 mt-1 font-medium">{v.chief_complaint}</p>
 
-                    <div className="mt-2.5 flex justify-between items-center text-xs">
-                      <span className={`px-2 py-0.5 rounded font-medium text-[11px] ${parseFloat(v.temperature_celsius) >= 38.5 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
-                        {v.temperature_celsius ? `${v.temperature_celsius}°C` : '36.5°C'}
-                      </span>
-                      <span className="text-blue-900 font-bold text-[11px]">{v.disposition}</span>
+                      {/* Dispensed Medication Indicator */}
+                      {v.medication_given && (
+                        <div className="mt-1.5 flex items-center gap-1 text-[11px] text-blue-800 font-semibold bg-blue-50 px-2 py-0.5 rounded w-fit">
+                          <Pill className="w-3 h-3 text-blue-600" /> {v.medication_given}
+                        </div>
+                      )}
+
+                      <div className="mt-2.5 flex justify-between items-center text-xs border-t pt-2">
+                        <span className={`px-2 py-0.5 rounded font-medium text-[11px] ${parseFloat(v.temperature_celsius) >= 38.5 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
+                          {v.temperature_celsius ? `${v.temperature_celsius}°C` : '36.5°C'}
+                        </span>
+                        <span className="text-blue-900 font-bold text-[11px]">{v.disposition}</span>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
